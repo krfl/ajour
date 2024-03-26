@@ -79,11 +79,9 @@ fn main() {
 
     let mut entries: Vec<Entry>;
 
-    {
-        let file = get_ajour_file(false);
-        let reader = BufReader::new(file);
-        entries = serde_json::from_reader(reader).expect("Unable to parse json");
-    }
+    let file = get_ajour_file(false);
+    let reader = BufReader::new(file);
+    entries = serde_json::from_reader(reader).expect("Unable to parse json");
     match &cli.command {
         Some(Commands::Add { message }) => {
             if !message.is_empty() {
