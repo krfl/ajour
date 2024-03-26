@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter};
 
 #[derive(Parser)]
@@ -59,52 +59,45 @@ impl Entry {
     }
 }
 
-fn main() {
-    let cli = Cli::parse();
-
+fn get_ajour_file(clear: bool) -> File {
     let mut path = config_dir().expect("Unable to find ajour file");
     path.push("ajour");
     path.push("ajour.json");
+    let path_str = path.clone();
+    let error_message = format!("Unable to open file: {:?}", path_str.as_os_str());
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(clear)
+        .open(path)
+        .expect(&error_message)
+}
+
+fn main() {
+    let cli = Cli::parse();
 
     let mut entries: Vec<Entry>;
 
     {
-        let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .read(true)
-            .open(path)
-            .expect("Unable to open file");
-
+        let file = get_ajour_file(false);
         let reader = BufReader::new(file);
         entries = serde_json::from_reader(reader).expect("Unable to parse json");
     }
     match &cli.command {
         Some(Commands::Add { message }) => {
             if !message.is_empty() {
-                // TODO: Add new entry to file
                 entries.push(Entry {
                     timestamp: Utc::now(),
                     message: message.to_string(),
                 });
-                {
-                    let mut path = config_dir().expect("Unable to find ajour file");
-                    path.push("ajour");
-                    path.push("ajour.json");
-                    let file = OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .read(true)
-                        .open(path)
-                        .expect("Unable to open file");
-
-                    let writer = BufWriter::new(file);
-                    let res = serde_json::to_writer(writer, &entries);
-                    if res.is_ok() {
-                        println!("Ok")
-                    } else {
-                        println!("Not ok")
-                    }
+                let file = get_ajour_file(true);
+                let writer = BufWriter::new(file);
+                let res = serde_json::to_writer(writer, &entries);
+                if res.is_ok() {
+                    println!("Ok")
+                } else {
+                    println!("Not ok")
                 }
             } else {
                 todo!();
