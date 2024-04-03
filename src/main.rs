@@ -12,15 +12,20 @@ use std::io::{BufReader, BufWriter};
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
+
+    input: Vec<String>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    Add {
-        #[arg(short, long)]
-        message: String,
-    },
+    Add {},
     List {
+        // List all stored ajour entries
+        #[arg(short, long)]
+        short: bool,
+    },
+    Export {
+        // Export all stored ajour entries in a given format
         #[arg(short, long)]
         short: bool,
     },
@@ -29,7 +34,7 @@ enum Commands {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub(crate) struct Entry {
     #[serde(with = "ts_seconds")]
-    timestamp: DateTime<Utc>, // TODO: Decide unixtime or timestamp?
+    timestamp: DateTime<Utc>,
     message: String,
 }
 
@@ -81,13 +86,17 @@ fn main() {
 
     let file = get_ajour_file(false);
     let reader = BufReader::new(file);
-    entries = serde_json::from_reader(reader).expect("Unable to parse json");
+    // entries = serde_json::from_reader(reader).expect("Unable to parse json");
+    entries = match serde_json::from_reader(reader) {
+        Ok(entries) => entries,
+        Err(_) => vec![],
+    };
     match &cli.command {
-        Some(Commands::Add { message }) => {
-            if !message.is_empty() {
+        Some(Commands::Add {}) | None => {
+            if !cli.input.is_empty() {
                 entries.push(Entry {
                     timestamp: Utc::now(),
-                    message: message.to_string(),
+                    message: cli.input.join(" "),
                 });
                 let file = get_ajour_file(true);
                 let writer = BufWriter::new(file);
@@ -125,7 +134,7 @@ fn main() {
                 }
             }
         }
-        None => {
+        Some(Commands::Export { short: _ }) => {
             todo!();
         }
     }
