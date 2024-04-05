@@ -1,5 +1,5 @@
 use chrono::serde::ts_seconds;
-use chrono::{DateTime, DurationRound, TimeDelta, Utc};
+use chrono::{DateTime, DurationRound, Local, TimeDelta, Utc};
 use clap::{Parser, Subcommand};
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
@@ -125,11 +125,13 @@ fn main() {
                 sorted.sort_by_key(|a| a.0);
 
                 for (key, value) in sorted.iter() {
-                    println!("{}: {}", key.format("%Y-%m-%d"), value.message);
+                    let local_time: DateTime<Local> = DateTime::from(**key);
+                    println!("{}: {}", local_time.format("%Y-%m-%d"), value.message);
                 }
             } else {
                 for entry in &entries {
-                    println!("{}: {}", entry.timestamp, entry.message);
+                    let local_time: DateTime<Local> = DateTime::from(entry.timestamp);
+                    println!("{}: {}", local_time, entry.message);
                 }
             }
         }
