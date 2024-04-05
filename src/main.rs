@@ -58,10 +58,10 @@ impl Entry {
         }
     }
     fn merge(&mut self, entry: &Entry) {
-        self.message.push_str(". ");
-        self.message
-            .push_str(capitalize(entry.message.as_str()).as_str());
-        self.message = capitalize(&self.message);
+        let mut msg = capitalize(&self.message);
+        msg.push_str(". ");
+        msg.push_str(&capitalize(&entry.message));
+        self.message = msg;
     }
 }
 
