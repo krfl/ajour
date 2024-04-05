@@ -9,6 +9,7 @@ use std::io::{BufReader, BufWriter};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
+#[command(arg_required_else_help(true))]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -106,9 +107,7 @@ fn main() {
                 } else {
                     println!("Not ok")
                 }
-            } else {
-                todo!();
-            }
+            } 
         }
         Some(Commands::List { short }) => {
             if *short {
