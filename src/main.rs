@@ -1,5 +1,5 @@
 use chrono::serde::ts_seconds;
-use chrono::{DateTime, DurationRound, Local, TimeDelta, Utc};
+use chrono::{DateTime, DurationRound, Local, NaiveDateTime, TimeDelta, Utc};
 use clap::{Parser, Subcommand};
 use dirs::config_dir;
 use serde::{Deserialize, Serialize};
@@ -21,14 +21,25 @@ struct Cli {
 enum Commands {
     Add {},
     List {
-        // List all stored ajour entries
         #[arg(short, long)]
-        short: bool,
+        from: Option<String>,
+        #[arg(short, long)]
+        to: Option<String>,
+    },
+    Summary {
+        #[arg(short, long)]
+        from: Option<String>,
+        #[arg(short, long, requires = "from")]
+        to: Option<String>,
     },
     Export {
-        // Export all stored ajour entries in a given format
+        // Print all stored ajour entries in a given format
         #[arg(short, long)]
-        short: bool,
+        format: String,
+        #[arg(short, long)]
+        from: Option<String>,
+        #[arg(short, long, requires = "from")]
+        to: Option<String>,
     },
 }
 
@@ -80,6 +91,30 @@ fn get_ajour_file(clear: bool) -> File {
         .expect(&error_message)
 }
 
+fn parse_date(date: Option<String>) -> Option<DateTime<Utc>> {
+    match date {
+        Some(date) => {
+            let naive_date_time = NaiveDateTime::parse_from_str(date.as_str(), "%Y-%m-%d %H:%M");
+            let naive_date = NaiveDateTime::parse_from_str(
+                format!("{} 0:0", date.as_str()).as_str(),
+                "%Y-%m-%d %H:%M",
+            );
+            let date_time = naive_date_time.or(naive_date).ok()?;
+            let timezone = Local::now().timezone();
+            match date_time.and_local_timezone(timezone) {
+                chrono::offset::LocalResult::Single(dt) => Some(dt.to_utc()),
+                chrono::offset::LocalResult::Ambiguous(dt, dt2) => {
+                    eprintln!("Ambigous date `{}` got {dt:?} and {dt2:?}", date);
+                    // TODO: return Some(dt.to_utc()) instead?
+                    None
+                }
+                chrono::offset::LocalResult::None => None,
+            }
+        }
+        None => None,
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -87,7 +122,6 @@ fn main() {
 
     let file = get_ajour_file(false);
     let reader = BufReader::new(file);
-    // entries = serde_json::from_reader(reader).expect("Unable to parse json");
     entries = match serde_json::from_reader(reader) {
         Ok(entries) => entries,
         Err(_) => vec![],
@@ -103,39 +137,66 @@ fn main() {
                 let writer = BufWriter::new(file);
                 let res = serde_json::to_writer(writer, &entries);
                 if res.is_ok() {
-                    println!("Ok")
+                    // Do nothing
                 } else {
                     println!("Not ok")
                 }
-            } 
-        }
-        Some(Commands::List { short }) => {
-            if *short {
-                let mut dailies = HashMap::<DateTime<Utc>, Entry>::new();
-
-                entries.iter().map(Entry::to_daily).for_each(|e| {
-                    if let Some(daily) = dailies.get_mut(&e.timestamp) {
-                        daily.merge(&e);
-                    } else {
-                        dailies.insert(e.timestamp, e);
-                    }
-                });
-
-                let mut sorted: Vec<_> = dailies.iter().collect();
-                sorted.sort_by_key(|a| a.0);
-
-                for (key, value) in sorted.iter() {
-                    let local_time: DateTime<Local> = DateTime::from(**key);
-                    println!("{}: {}", local_time.format("%Y-%m-%d"), value.message);
-                }
-            } else {
-                for entry in &entries {
-                    let local_time: DateTime<Local> = DateTime::from(entry.timestamp);
-                    println!("{}: {}", local_time, entry.message);
-                }
             }
         }
-        Some(Commands::Export { short: _ }) => {
+        Some(Commands::List { from, to }) => {
+            let mut filtered_entries: Vec<Entry> = entries.clone();
+
+            if from.is_some() {
+                filtered_entries.retain(|e| {
+                    e.timestamp >= parse_date(from.to_owned()).expect("Invalid datetime supplied")
+                });
+            }
+
+            if to.is_some() {
+                filtered_entries.retain(|e| {
+                    e.timestamp <= parse_date(to.to_owned()).expect("Invalid datetime supplied")
+                });
+            }
+
+            for entry in filtered_entries {
+                let local_time: DateTime<Local> = DateTime::from(entry.timestamp);
+                println!("{}: {}", local_time, entry.message);
+            }
+        }
+        Some(Commands::Summary { from, to }) => {
+            let mut filtered_entries: Vec<Entry> = entries.clone();
+
+            if from.is_some() {
+                filtered_entries.retain(|e| {
+                    e.timestamp >= parse_date(from.to_owned()).expect("Invalid datetime supplied")
+                });
+            }
+
+            if to.is_some() {
+                filtered_entries.retain(|e| {
+                    e.timestamp <= parse_date(to.to_owned()).expect("Invalid datetime supplied")
+                });
+            }
+
+            let mut dailies = HashMap::<DateTime<Utc>, Entry>::new();
+
+            filtered_entries.iter().map(Entry::to_daily).for_each(|e| {
+                if let Some(daily) = dailies.get_mut(&e.timestamp) {
+                    daily.merge(&e);
+                } else {
+                    dailies.insert(e.timestamp, e);
+                }
+            });
+
+            let mut sorted: Vec<_> = dailies.iter().collect();
+            sorted.sort_by_key(|a| a.0);
+
+            for (key, value) in sorted.iter() {
+                let local_time: DateTime<Local> = DateTime::from(**key);
+                println!("{}: {}", local_time.format("%Y-%m-%d"), value.message);
+            }
+        }
+        Some(Commands::Export { .. }) => {
             todo!();
         }
     }
