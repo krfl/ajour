@@ -25,20 +25,13 @@ enum Commands {
         from: Option<String>,
         #[arg(short, long)]
         to: Option<String>,
-    },
-    Summary {
         #[arg(short, long)]
-        from: Option<String>,
-        #[arg(short, long, requires = "from")]
-        to: Option<String>,
+        compact: bool,
     },
     Export {
-        // Print all stored entries in a given format
-        #[arg(short, long)]
-        format: String,
         #[arg(short, long)]
         from: Option<String>,
-        #[arg(short, long, requires = "from")]
+        #[arg(short, long)]
         to: Option<String>,
     },
 }
@@ -79,8 +72,14 @@ impl Entry {
 fn get_sq_file(clear: bool) -> File {
     let mut path = config_dir().expect("Unable to find sidequest file");
     path.push("sidequest");
+
+    // TODO: Handle properly
+    if !std::path::Path::new(&path).exists() {
+        std::fs::create_dir_all(path.as_os_str()).expect("Failed to create sidequest directory");
+    }
     path.push("sidequest.json");
     let path_str = path.clone();
+
     let error_message = format!("Unable to open file: {:?}", path_str.as_os_str());
     OpenOptions::new()
         .read(true)
@@ -137,67 +136,65 @@ fn main() {
                 let writer = BufWriter::new(file);
                 let res = serde_json::to_writer(writer, &entries);
                 if res.is_ok() {
-                    // Do nothing
+                    println!("Ok")
                 } else {
                     println!("Not ok")
                 }
             }
         }
-        Some(Commands::List { from, to }) => {
-            let mut filtered_entries: Vec<Entry> = entries.clone();
-
+        Some(Commands::List { from, to, compact }) => {
             if from.is_some() {
-                filtered_entries.retain(|e| {
+                entries.retain(|e| {
                     e.timestamp >= parse_date(from.to_owned()).expect("Invalid datetime supplied")
                 });
             }
 
             if to.is_some() {
-                filtered_entries.retain(|e| {
+                entries.retain(|e| {
                     e.timestamp <= parse_date(to.to_owned()).expect("Invalid datetime supplied")
                 });
             }
 
-            for entry in filtered_entries {
-                let local_time: DateTime<Local> = DateTime::from(entry.timestamp);
-                println!("{}: {}", local_time, entry.message);
-            }
-        }
-        Some(Commands::Summary { from, to }) => {
-            let mut filtered_entries: Vec<Entry> = entries.clone();
+            if *compact {
+                let mut dailies = HashMap::<DateTime<Utc>, Entry>::new();
 
-            if from.is_some() {
-                filtered_entries.retain(|e| {
-                    e.timestamp >= parse_date(from.to_owned()).expect("Invalid datetime supplied")
+                entries.iter().map(Entry::to_daily).for_each(|e| {
+                    if let Some(daily) = dailies.get_mut(&e.timestamp) {
+                        daily.merge(&e);
+                    } else {
+                        dailies.insert(e.timestamp, e);
+                    }
                 });
-            }
 
-            if to.is_some() {
-                filtered_entries.retain(|e| {
-                    e.timestamp <= parse_date(to.to_owned()).expect("Invalid datetime supplied")
-                });
-            }
+                let mut sorted: Vec<_> = dailies.iter().collect();
+                sorted.sort_by_key(|a| a.0);
 
-            let mut dailies = HashMap::<DateTime<Utc>, Entry>::new();
-
-            filtered_entries.iter().map(Entry::to_daily).for_each(|e| {
-                if let Some(daily) = dailies.get_mut(&e.timestamp) {
-                    daily.merge(&e);
-                } else {
-                    dailies.insert(e.timestamp, e);
+                for (key, value) in sorted.iter() {
+                    let local_time: DateTime<Local> = DateTime::from(**key);
+                    println!("{}: {}", local_time.format("%Y-%m-%d"), value.message);
                 }
-            });
-
-            let mut sorted: Vec<_> = dailies.iter().collect();
-            sorted.sort_by_key(|a| a.0);
-
-            for (key, value) in sorted.iter() {
-                let local_time: DateTime<Local> = DateTime::from(**key);
-                println!("{}: {}", local_time.format("%Y-%m-%d"), value.message);
+            } else {
+                for entry in entries {
+                    let local_time: DateTime<Local> = DateTime::from(entry.timestamp);
+                    println!("{}: {}", local_time, entry.message);
+                }
             }
         }
-        Some(Commands::Export { .. }) => {
-            todo!();
+        Some(Commands::Export { from, to }) => {
+            if from.is_some() {
+                entries.retain(|e| {
+                    e.timestamp >= parse_date(from.to_owned()).expect("Invalid datetime supplied")
+                });
+            }
+
+            if to.is_some() {
+                entries.retain(|e| {
+                    e.timestamp <= parse_date(to.to_owned()).expect("Invalid datetime supplied")
+                });
+            }
+
+            let json = serde_json::to_string_pretty(&entries).expect("Could not export entries");
+            print!("{}", json);
         }
     }
 }
