@@ -33,7 +33,7 @@ enum Commands {
         to: Option<String>,
     },
     Export {
-        // Print all stored ajour entries in a given format
+        // Print all stored entries in a given format
         #[arg(short, long)]
         format: String,
         #[arg(short, long)]
@@ -76,10 +76,10 @@ impl Entry {
     }
 }
 
-fn get_ajour_file(clear: bool) -> File {
-    let mut path = config_dir().expect("Unable to find ajour file");
-    path.push("ajour");
-    path.push("ajour.json");
+fn get_sq_file(clear: bool) -> File {
+    let mut path = config_dir().expect("Unable to find sidequest file");
+    path.push("sidequest");
+    path.push("sidequest.json");
     let path_str = path.clone();
     let error_message = format!("Unable to open file: {:?}", path_str.as_os_str());
     OpenOptions::new()
@@ -120,7 +120,7 @@ fn main() {
 
     let mut entries: Vec<Entry>;
 
-    let file = get_ajour_file(false);
+    let file = get_sq_file(false);
     let reader = BufReader::new(file);
     entries = match serde_json::from_reader(reader) {
         Ok(entries) => entries,
@@ -133,7 +133,7 @@ fn main() {
                     timestamp: Utc::now(),
                     message: cli.input.join(" "),
                 });
-                let file = get_ajour_file(true);
+                let file = get_sq_file(true);
                 let writer = BufWriter::new(file);
                 let res = serde_json::to_writer(writer, &entries);
                 if res.is_ok() {
